@@ -7,6 +7,7 @@ import androidx.lifecycle.MutableLiveData
 import androidx.preference.PreferenceManager
 import com.dermomedic.database.AnalyseData
 import com.dermomedic.database.AnalyseDatabaseDao
+import com.dermomedic.utils.Event
 import com.google.gson.GsonBuilder
 import com.google.gson.LongSerializationPolicy
 import dermomedic.ai.service.ktor.AnalyseJson
@@ -20,6 +21,7 @@ import kotlinx.coroutines.GlobalScope
 import kotlinx.coroutines.launch
 import java.io.File
 import java.lang.Thread.sleep
+import java.net.ConnectException
 
 
 class AnalyseViewModel(val database: AnalyseDatabaseDao,
@@ -29,6 +31,7 @@ class AnalyseViewModel(val database: AnalyseDatabaseDao,
     val malignantEvaluation: LiveData<String>
         get() = _malignantEvaluation
 
+    val networkError = MutableLiveData<Event<String>>()
     private var _currentFileName: String? = null
 
     init {
@@ -75,30 +78,34 @@ class AnalyseViewModel(val database: AnalyseDatabaseDao,
 
         val client = HttpClient()
         GlobalScope.launch(Dispatchers.IO) {
-            val json: String = client.submitFormWithBinaryData("${baseUrl}/upload", formData)
-            val gson = GsonBuilder()
-                    .disableHtmlEscaping()
-                    .serializeNulls()
-                    .setLongSerializationPolicy(LongSerializationPolicy.STRING)
-                    .create()
-            val uploadAnalyse = gson.fromJson(json, AnalyseJson::class.java)
+            try {
+                val json: String = client.submitFormWithBinaryData("${baseUrl}/upload", formData)
+                val gson = GsonBuilder()
+                        .disableHtmlEscaping()
+                        .serializeNulls()
+                        .setLongSerializationPolicy(LongSerializationPolicy.STRING)
+                        .create()
+                val uploadAnalyse = gson.fromJson(json, AnalyseJson::class.java)
 
-            var analyseEnded = false
-            var analyse: AnalyseJson? = null
-            var nbRequest = 0
-            while (!analyseEnded) {
-                sleep(300)
-                println("requesting ${baseUrl}/analyse/json/${uploadAnalyse.idx}")
-                analyse = gson.fromJson(client.get<String>("${baseUrl}/analyse/json/${uploadAnalyse.idx}"), AnalyseJson::class.java)
-                println("nbRequest $nbRequest: $analyse analysed:${analyse.analysed()}")
-                analyseEnded = analyse.analysed()
-                nbRequest++
-                println(analyse.malingantEvaluation)
-            }
-            analyse?.let {
-                val analysedFileName = "${analyse.fileName}.${analyse.extension}"
-                upsertAnalyseData(analysedFileName, analyse)
-                updateAnalyseView(analysedFileName)
+                var analyseEnded = false
+                var analyse: AnalyseJson? = null
+                var nbRequest = 0
+                while (!analyseEnded) {
+                    sleep(300)
+                    println("requesting ${baseUrl}/analyse/json/${uploadAnalyse.idx}")
+                    analyse = gson.fromJson(client.get<String>("${baseUrl}/analyse/json/${uploadAnalyse.idx}"), AnalyseJson::class.java)
+                    println("nbRequest $nbRequest: $analyse analysed:${analyse.analysed()}")
+                    analyseEnded = analyse.analysed()
+                    nbRequest++
+                    println(analyse.malingantEvaluation)
+                }
+                analyse?.let {
+                    val analysedFileName = "${analyse.fileName}.${analyse.extension}"
+                    upsertAnalyseData(analysedFileName, analyse)
+                    updateAnalyseView(analysedFileName)
+                }
+            } catch (e: ConnectException) {
+                networkError.postValue(Event("ERROR: \nNo back-end found using base url $baseUrl"))
             }
         }
     }
@@ -114,3 +121,4 @@ class AnalyseViewModel(val database: AnalyseDatabaseDao,
     }
 
 }
+

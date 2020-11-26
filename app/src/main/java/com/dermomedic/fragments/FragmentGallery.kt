@@ -9,6 +9,7 @@ import android.view.View
 import android.view.ViewGroup
 import android.webkit.MimeTypeMap
 import android.widget.ImageButton
+import android.widget.Toast
 import androidx.appcompat.app.AlertDialog
 import androidx.constraintlayout.widget.ConstraintLayout
 import androidx.core.content.FileProvider
@@ -78,16 +79,21 @@ class GalleryFragment internal constructor() : Fragment() {
 
         val application = requireNotNull(this.activity).application
         val dataSource = AnalyseDatabase.getInstance(application).analyseDatabaseDao
-
         val viewModelFactory = AnalyseViewModelFactory(dataSource, application)
         viewModel = ViewModelProvider(
                         this, viewModelFactory).get(AnalyseViewModel::class.java)
 
         viewModel = ViewModelProvider(this).get(AnalyseViewModel::class.java)
-        binding.analyseViewModel = viewModel
 
+
+        binding.analyseViewModel = viewModel
         binding.setLifecycleOwner(this)
 
+        viewModel.networkError.observe(viewLifecycleOwner, androidx.lifecycle.Observer { event ->
+            event?.getContentIfNotHandledOrReturnNull()?.let {
+                Toast.makeText(activity, it, Toast.LENGTH_LONG).show()
+            }
+        })
         return binding.root
     }
 
